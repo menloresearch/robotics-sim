@@ -1,0 +1,6 @@
+build/
+robot/
+dist/
+.cache/
+.clangd
+
