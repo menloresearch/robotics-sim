@@ -1,5 +1,3 @@
-#include "mujoco/mjdata.h"
-#include "mujoco/mjspec.h"
 #include "mujoco/mujoco.h"
 #include <stdio.h>
 

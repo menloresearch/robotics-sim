@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(mujoco-wasm)
 
-set(SOURCE_FILES src/main.cpp)
+set(SOURCE_FILES src/main.genned.cpp)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/dist)
 
 # Generate compile_commands.json for LSP
@@ -12,8 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Define Emscripten flags as a single string with proper spacing
 if (EMSCRIPTEN)
-  # set(EMCC_LINKER_FLAGS "-s WASM=1 -s USE_WEBGL2=1 -s ASSERTIONS=1 --bind -s ALLOW_MEMORY_GROWTH=1 -s EXPORT_ES6=1 -s FORCE_FILESYSTEM=1 -s EXIT_RUNTIME=1 -s EXPORTED_RUNTIME_METHODS=['FS','MEMFS','ccall','cwrap'] -s EXPORTED_FUNCTIONS=['_main']")
-  set(EMCC_LINKER_FLAGS "-s EXIT_RUNTIME=1 -s WASM=1")
+  set(EMCC_LINKER_FLAGS "-s WASM=1 -s USE_WEBGL2=1 -s ASSERTIONS=1 --bind -s ALLOW_MEMORY_GROWTH=1 -s EXPORT_ES6=1 -s MODULARIZE=1 -s FORCE_FILESYSTEM=1 -s EXPORTED_RUNTIME_METHODS=['FS','MEMFS','ccall','cwrap'] -s EXPORT_NAME=load_mujoco -s EXCEPTION_CATCHING_ALLOWED=['load_from_xml']")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${EMCC_LINKER_FLAGS}")
 endif()
 

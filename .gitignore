@@ -3,4 +3,5 @@ robot/
 dist/
 .cache/
 .clangd
+node_modules/
 
