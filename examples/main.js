@@ -11,13 +11,76 @@ import {
   toMujocoPos,
   standardNormal,
 } from "./mujocoUtils.js";
+import {
+  computeJointEulers,
+  PoseEst,
+} from "./poseUtils.js"
 import load_mujoco from "../dist/mujoco-wasm.js";
+
+const clamp = (value, min, max) => {
+  return Math.max(min, Math.min(value, max));
+};
+
+function pd_control(target_q, q, kp, target_dq, dq, kd) {
+  if (target_q.length != q.length) throw Error("target_q.length != q.length")
+  if (target_dq.length != dq.length) throw Error("target_dq.length != dq.length")
+
+  // return (target_q - q) * kp + (target_dq - dq) * kd
+  let out = new Float64Array(target_q.length);
+  for (let i = 0; i < target_q.length; i++) {
+    const tq = target_q[i];
+    const tdq = target_dq[i];
+    out[i] = (tq - q[i]) * kp[i] + (tdq - dq[i]) * kd[i];
+  }
+  // console.debug(out);
+  // console.debug(Math.max(...out), Math.min(...out))
+  return out.map(num => clamp(num, -100, 100));
+  // debugger
+  return out
+}
+
+const g1_dof = 43
+let g1_kp = new Float64Array(g1_dof).fill(50).fill(100, 12, 15);
+let g1_kd = new Float64Array(g1_dof).fill(2).fill(3, 12, 15);;
+// let g1_kp = new Float64Array(g1_dof).fill(0)
+// let g1_kd = new Float64Array(g1_dof).fill(0)
+const g1_target_dq = new Float64Array(g1_dof).fill(0);
+
+
+class ActionQuee {
+  constructor(pos) {
+    this.queue = []
+    this.last_pos = pos
+  }
+
+  set_next(pos, steps) {
+    let prev = this.queue.length > 0 ? this.queue[this.queue.length - 1] : this.last_pos
+    const delta = pos.map((v, i) => {
+      return (v - prev[i]) / steps
+    })
+    for (let i = 1; i < steps + 1; i++) {
+      let intrep = new Float64Array(prev)
+      intrep = intrep.map((v, j) => v + delta[j] * i)
+      this.queue.push(intrep)
+    }
+    // debugger
+  }
+
+  next_action() {
+    if (this.queue.length > 0)
+      this.last_pos = this.queue.shift()
+    return this.last_pos
+  }
+}
 
 // Load the MuJoCo Module
 const mujoco = await load_mujoco();
+const pose_est = new PoseEst();
 
 // Set up Emscripten's Virtual File System
-var initialScene = "humanoid.xml";
+var initialScene = "arm26.xml";
+// var initialScene = "g1_29dof_with_hand_rev_1_0.xml";
+
 mujoco.FS.mkdir("/working");
 mujoco.FS.mount(mujoco.MEMFS, { root: "." }, "/working");
 mujoco.FS.writeFile(
@@ -26,6 +89,7 @@ mujoco.FS.writeFile(
 );
 
 export class MuJoCoDemo {
+  
   constructor() {
     this.mujoco = mujoco;
 
@@ -100,6 +164,8 @@ export class MuJoCoDemo {
       this.container.parentElement,
       this.controls,
     );
+
+    this._debug_step = 0
   }
 
   async init() {
@@ -120,73 +186,166 @@ export class MuJoCoDemo {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   }
 
+  control_step() {
+    let timestep = this.model.getOptions().timestep;
+    
+    if (this.params.scene === 'g1_29dof_with_hand_rev_1_0.xml' && (this._debug_step > 100) && (this._debug_step % 1 == 0)) {
+          
+      let tar_q = new Float64Array(g1_dof).fill(0);
+      let zero = new Float64Array(g1_dof).fill(0);
+
+      const default_p = pd_control(
+        zero,
+        this.simulation.qpos,
+        // this.simulation.qpos.subarray(7),
+        g1_kp,
+        g1_target_dq,
+        this.simulation.qvel,
+        g1_kd,
+      )
+
+            
+      if (this.action_que === undefined) {
+        this.action_que = new ActionQuee(new Float64Array(this.simulation.qpos))
+        this.action_que.set_next(tar_q, 100);
+      } else {
+        if (this.action_que.queue.length === 0) {
+          if (pose_est.cur_joint_pos && "rightShoulder-leftShoulder-leftElbow" in pose_est.cur_joint_pos) {
+            let roll = pose_est.cur_joint_pos['rightShoulder-leftShoulder-leftElbow'].roll;
+            let pitch = pose_est.cur_joint_pos['rightShoulder-leftShoulder-leftElbow'].pitch;
+            // console.log('roll', roll, 'pitch', pitch)
+            tar_q[16] = roll // left_shoulder_roll_joint
+            tar_q[15] = pitch - Math.PI / 2 // left_shoulder_pitch
+          }
+          
+          if (pose_est.cur_joint_pos && "leftShoulder-leftElbow-leftWrist" in pose_est.cur_joint_pos) {
+            let pitch = pose_est.cur_joint_pos['leftShoulder-leftElbow-leftWrist'].pitch;
+            let yaw = pose_est.cur_joint_pos['leftShoulder-leftElbow-leftWrist'].yaw;
+            // console.log('pitch', pitch, 'yaw', yaw)
+            tar_q[18] = pitch - Math.PI / 2 // left_elbow_joint
+            tar_q[17] = yaw // left_shoulder_yaw_joint
+          }
+          
+          if (pose_est.cur_joint_pos && "left-thumb-1" in pose_est.cur_joint_pos) {
+            let pitch = pose_est.cur_joint_pos['left-thumb-1'].pitch;
+            tar_q[23] = (Math.PI - Math.abs(pitch));
+            // console.log('pitch-1', pitch)
+          }
+          
+          if (pose_est.cur_joint_pos && "left-thumb-2" in pose_est.cur_joint_pos) {
+            let pitch = pose_est.cur_joint_pos['left-thumb-2'].pitch;
+            tar_q[24] = (Math.PI - Math.abs(pitch));
+            // console.log('pitch-2', pitch)
+          }
+          
+          if (pose_est.cur_joint_pos && "left-index-0" in pose_est.cur_joint_pos) {
+            let pitch = pose_est.cur_joint_pos['left-index-0'].pitch;
+            tar_q[27] = -pitch
+            console.log('pitch-1', pitch)
+          }
+          
+          if (pose_est.cur_joint_pos && "left-index-1" in pose_est.cur_joint_pos) {
+            let pitch = pose_est.cur_joint_pos['left-index-1'].pitch;
+            tar_q[28] = -pitch
+            console.log('pitch-2', pitch)
+          }
+          
+          if (pose_est.cur_joint_pos && "left-middle-0" in pose_est.cur_joint_pos) {
+            let pitch = pose_est.cur_joint_pos['left-middle-0'].pitch;
+            tar_q[25] = -pitch
+            console.log('pitch-1', pitch)
+          }
+          
+          if (pose_est.cur_joint_pos && "left-middle-1" in pose_est.cur_joint_pos) {
+            let pitch = pose_est.cur_joint_pos['left-middle-1'].pitch;
+            tar_q[26] = -pitch
+            console.log('pitch-2', pitch)
+          }
+         
+          this.action_que.set_next(tar_q, 100);
+        }
+      }
+      
+      const tau = pd_control(
+        this.action_que.next_action(),
+        this.simulation.qpos,
+        g1_kp,
+        g1_target_dq,
+        this.simulation.qvel,
+        g1_kd,
+      )
+      for (let i = 0; i < this.simulation.ctrl.length; i++) {
+        this.simulation.ctrl[i] = tau[i];
+        // this.simulation.ctrl[i] = tmp[i];
+      }
+      // this.simulation.ctrl[3] = tau[3];
+      this.simulation.ctrl[12] = default_p[12];
+      this.simulation.ctrl[13] = default_p[13];
+      this.simulation.ctrl[14] = default_p[14];
+      
+      // this.simulation.ctrl[15] = tau[15]; // left shoulder pitch
+      // this.simulation.ctrl[16] = tau[16]; // left shoulder roll
+      // this.simulation.ctrl[18] = tau[18]; // left_elbow
+    }
+
+    // Clear old perturbations, apply new ones.
+    for (let i = 0; i < this.simulation.qfrc_applied.length; i++) {
+      this.simulation.qfrc_applied[i] = 0.0;
+    }
+    
+    let dragged = this.dragStateManager.physicsObject;
+    if (dragged && dragged.bodyID) {
+      for (let b = 0; b < this.model.nbody; b++) {
+        if (this.bodies[b]) {
+          getPosition(this.simulation.xpos, b, this.bodies[b].position);
+          getQuaternion(
+            this.simulation.xquat,
+            b,
+            this.bodies[b].quaternion,
+          );
+          this.bodies[b].updateWorldMatrix();
+        }
+      }
+      let bodyID = dragged.bodyID;
+      this.dragStateManager.update(); // Update the world-space force origin
+      let force = toMujocoPos(
+        this.dragStateManager.currentWorld
+          .clone()
+          .sub(this.dragStateManager.worldHit)
+          .multiplyScalar(this.model.body_mass[bodyID] * 250),
+      );
+      let point = toMujocoPos(this.dragStateManager.worldHit.clone());
+      this.simulation.applyForce(
+        force.x,
+        force.y,
+        force.z,
+        0,
+        0,
+        0,
+        point.x,
+        point.y,
+        point.z,
+        bodyID,
+      );
+
+      // TODO: Apply pose perturbations (mocap bodies only).
+    }
+
+    this.simulation.step();
+
+    this.mujoco_time += timestep * 1000.0;
+  }
+
   render(timeMS) {
     this.controls.update();
-
+    this._debug_step++
+    
     if (!this.params["paused"]) {
-      let timestep = this.model.getOptions().timestep;
       if (timeMS - this.mujoco_time > 35.0) {
         this.mujoco_time = timeMS;
       }
       while (this.mujoco_time < timeMS) {
-        // Jitter the control state with gaussian random noise
-        if (this.params["ctrlnoisestd"] > 0.0) {
-          let rate = Math.exp(
-            -timestep / Math.max(1e-10, this.params["ctrlnoiserate"]),
-          );
-          let scale = this.params["ctrlnoisestd"] * Math.sqrt(1 - rate * rate);
-          let currentCtrl = this.simulation.ctrl;
-          for (let i = 0; i < currentCtrl.length; i++) {
-            currentCtrl[i] = rate * currentCtrl[i] + scale * standardNormal();
-            this.params["Actuator " + i] = currentCtrl[i];
-          }
-        }
-
-        // Clear old perturbations, apply new ones.
-        for (let i = 0; i < this.simulation.qfrc_applied.length; i++) {
-          this.simulation.qfrc_applied[i] = 0.0;
-        }
-        let dragged = this.dragStateManager.physicsObject;
-        if (dragged && dragged.bodyID) {
-          for (let b = 0; b < this.model.nbody; b++) {
-            if (this.bodies[b]) {
-              getPosition(this.simulation.xpos, b, this.bodies[b].position);
-              getQuaternion(
-                this.simulation.xquat,
-                b,
-                this.bodies[b].quaternion,
-              );
-              this.bodies[b].updateWorldMatrix();
-            }
-          }
-          let bodyID = dragged.bodyID;
-          this.dragStateManager.update(); // Update the world-space force origin
-          let force = toMujocoPos(
-            this.dragStateManager.currentWorld
-              .clone()
-              .sub(this.dragStateManager.worldHit)
-              .multiplyScalar(this.model.body_mass[bodyID] * 250),
-          );
-          let point = toMujocoPos(this.dragStateManager.worldHit.clone());
-          this.simulation.applyForce(
-            force.x,
-            force.y,
-            force.z,
-            0,
-            0,
-            0,
-            point.x,
-            point.y,
-            point.z,
-            bodyID,
-          );
-
-          // TODO: Apply pose perturbations (mocap bodies only).
-        }
-
-        this.simulation.step();
-
-        this.mujoco_time += timestep * 1000.0;
+        this.control_step()
       }
     } else if (this.params["paused"]) {
       this.dragStateManager.update(); // Update the world-space force origin

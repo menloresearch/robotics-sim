@@ -24,6 +24,7 @@
   },
   "homepage": "https://github.com/zalo/mujoco_wasm#readme",
   "dependencies": {
+    "@mediapipe/holistic": "^0.5.1675471629",
     "three": "^0.150.1"
   }
 }

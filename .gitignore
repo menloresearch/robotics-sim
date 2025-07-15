@@ -5,3 +5,10 @@ dist/
 .clangd
 node_modules/
 
+CMake*.txt
+cmake*
+Makefile
+examples/scenes/meshes/*
+CMakeFiles/
+bun.lockb
+compile_commands.json

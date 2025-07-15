@@ -20,6 +20,7 @@ set(MAIN_PATH "${PROJECT_SOURCE_DIR}/..")
 
 if (EMSCRIPTEN)
   set(MUJOCO_FRAMEWORK_PATH "${MAIN_PATH}/mujoco-wasm/build_wasm")
+  message(STATUS "MUJOCO_FRAMEWORK_PATH (Emscripten): ${MUJOCO_FRAMEWORK_PATH}")
   set(MUJOCO_INCLUDE_DIR "${MUJOCO_FRAMEWORK_PATH}/include")
   
   # For Emscripten build, we'll use individual component libraries
@@ -43,6 +44,7 @@ if (EMSCRIPTEN)
 else()
   # Apple build
   set(MUJOCO_FRAMEWORK_PATH "${MAIN_PATH}/mujoco-wasm/build_apple/lib/mujoco.framework")
+  message(STATUS "MUJOCO_FRAMEWORK_PATH (Apple): ${MUJOCO_FRAMEWORK_PATH}")
   set(MUJOCO_INCLUDE_DIR "${MUJOCO_FRAMEWORK_PATH}")
   set(MUJOCO_LIB "${MUJOCO_FRAMEWORK_PATH}/Versions/Current/libmujoco.dylib")
   

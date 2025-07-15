@@ -10,6 +10,10 @@
         <meta name="viewport"           content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, user-scalable=no, shrink-to-fit=0">
         <meta name="theme-color"        content="#ffffff">
         <link rel ="icon" type="image/x-icon" href="./examples/favicon.png">
+        <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
     </head>
 
     <body style="margin:0px; background-color:rgb(255, 255, 255); overflow:hidden; position:fixed; min-height: 100%;
@@ -34,6 +38,10 @@
             <!--<div id="error"></div>
             <script type="module" src="./examples/Debug.js"></script>-->
             <script type="module" src="./examples/main.js"></script>
+        </div>
+        <div style="position: fixed; width: 480px;">
+            <video class="input_video" ></video>
+            <canvas class="output_canvas"></canvas>
         </div>
     </body>
 </html>
