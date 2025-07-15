@@ -40,8 +40,8 @@ function pd_control(target_q, q, kp, target_dq, dq, kd) {
 }
 
 const g1_dof = 43
-let g1_kp = new Float64Array(g1_dof).fill(50).fill(100, 12, 15);
-let g1_kd = new Float64Array(g1_dof).fill(2).fill(3, 12, 15);;
+let g1_kp = new Float64Array(g1_dof).fill(50).fill(150, 12, 15);
+let g1_kd = new Float64Array(g1_dof).fill(2).fill(4, 12, 15);;
 // let g1_kp = new Float64Array(g1_dof).fill(0)
 // let g1_kd = new Float64Array(g1_dof).fill(0)
 const g1_target_dq = new Float64Array(g1_dof).fill(0);
@@ -53,8 +53,17 @@ class ActionQuee {
     this.last_pos = pos
   }
 
+  clamp_action(prev, tar) {
+    const max_rad_d = Math.PI / 8
+    return tar.map((v, i) => {
+      const d = Math.min(Math.max(v - prev[i], -max_rad_d), max_rad_d)
+      return prev[i] + d
+    })
+  }
+
   set_next(pos, steps) {
     let prev = this.queue.length > 0 ? this.queue[this.queue.length - 1] : this.last_pos
+    pos = this.clamp_action(prev, pos)
     const delta = pos.map((v, i) => {
       return (v - prev[i]) / steps
     })
@@ -189,7 +198,7 @@ export class MuJoCoDemo {
   control_step() {
     let timestep = this.model.getOptions().timestep;
     
-    if (this.params.scene === 'g1_29dof_with_hand_rev_1_0.xml' && (this._debug_step > 100) && (this._debug_step % 1 == 0)) {
+    if (this.params.scene === 'g1_29dof_with_hand_rev_1_0.xml' && (this._debug_step > 100)) {
           
       let tar_q = new Float64Array(g1_dof).fill(0);
       let zero = new Float64Array(g1_dof).fill(0);
@@ -223,7 +232,7 @@ export class MuJoCoDemo {
             let yaw = pose_est.cur_joint_pos['leftShoulder-leftElbow-leftWrist'].yaw;
             // console.log('pitch', pitch, 'yaw', yaw)
             tar_q[18] = pitch - Math.PI / 2 // left_elbow_joint
-            tar_q[17] = yaw // left_shoulder_yaw_joint
+            tar_q[17] = Math.min(Math.max(yaw * 1.5, -Math.PI / 2), Math.PI / 2) // left_shoulder_yaw_joint
           }
           
           if (pose_est.cur_joint_pos && "left-thumb-1" in pose_est.cur_joint_pos) {
@@ -241,25 +250,84 @@ export class MuJoCoDemo {
           if (pose_est.cur_joint_pos && "left-index-0" in pose_est.cur_joint_pos) {
             let pitch = pose_est.cur_joint_pos['left-index-0'].pitch;
             tar_q[27] = -pitch
-            console.log('pitch-1', pitch)
+            // console.log('pitch-1', pitch)
           }
           
           if (pose_est.cur_joint_pos && "left-index-1" in pose_est.cur_joint_pos) {
             let pitch = pose_est.cur_joint_pos['left-index-1'].pitch;
             tar_q[28] = -pitch
-            console.log('pitch-2', pitch)
+            // console.log('pitch-2', pitch)
           }
           
           if (pose_est.cur_joint_pos && "left-middle-0" in pose_est.cur_joint_pos) {
             let pitch = pose_est.cur_joint_pos['left-middle-0'].pitch;
             tar_q[25] = -pitch
-            console.log('pitch-1', pitch)
+            // console.log('pitch-1', pitch)
           }
           
           if (pose_est.cur_joint_pos && "left-middle-1" in pose_est.cur_joint_pos) {
             let pitch = pose_est.cur_joint_pos['left-middle-1'].pitch;
             tar_q[26] = -pitch
-            console.log('pitch-2', pitch)
+            // console.log('pitch-2', pitch)
+          }
+
+          if (pose_est.cur_joint_pos && "leftShoulder-rightShoulder-rightElbow" in pose_est.cur_joint_pos) {
+            let roll = pose_est.cur_joint_pos['leftShoulder-rightShoulder-rightElbow'].roll;
+            let pitch = pose_est.cur_joint_pos['leftShoulder-rightShoulder-rightElbow'].pitch;
+            // console.log('roll', roll, 'pitch', pitch)
+            tar_q[30] = roll // left_shoulder_roll_joint
+            tar_q[29] = -(pitch - Math.PI / 2) // left_shoulder_pitch
+          }
+
+          if (pose_est.cur_joint_pos && "rightShoulder-rightElbow-rightWrist" in pose_est.cur_joint_pos) {
+            let pitch = pose_est.cur_joint_pos['rightShoulder-rightElbow-rightWrist'].pitch;
+            let yaw = pose_est.cur_joint_pos['rightShoulder-rightElbow-rightWrist'].yaw;
+            yaw += Math.PI / 2;
+            // console.log('pitch', pitch, 'yaw', yaw)
+            tar_q[32] = pitch - Math.PI / 2 // left_elbow_joint
+            tar_q[31] = Math.min(Math.max(yaw * 1.5, -Math.PI / 2), Math.PI / 2) // left_shoulder_yaw_joint
+          }
+
+          if (pose_est.cur_joint_pos && "right-thumb-1" in pose_est.cur_joint_pos) {
+            let pitch = pose_est.cur_joint_pos['right-thumb-1'].pitch;
+            tar_q[37] = -(Math.PI - Math.abs(pitch));
+            // console.log('pitch-1', pitch)
+          }
+          
+          if (pose_est.cur_joint_pos && "right-thumb-2" in pose_est.cur_joint_pos) {
+            let pitch = pose_est.cur_joint_pos['right-thumb-2'].pitch;
+            tar_q[38] = -(Math.PI - Math.abs(pitch));
+            // console.log('pitch-2', pitch)
+          }
+          
+          if (pose_est.cur_joint_pos && "right-index-0" in pose_est.cur_joint_pos) {
+            let pitch = pose_est.cur_joint_pos['right-index-0'].pitch;
+            tar_q[39] = pitch - (Math.PI * 0.4)
+            console.log('pitch-0', pitch)
+          }
+          
+          if (pose_est.cur_joint_pos && "right-index-1" in pose_est.cur_joint_pos) {
+            let pitch = pose_est.cur_joint_pos['right-index-1'].pitch;
+            tar_q[40] = pitch
+            // tar_q[39] = pitch
+            // console.log('pitch-1', pitch)
+          }
+          
+          if (pose_est.cur_joint_pos && "right-middle-0" in pose_est.cur_joint_pos) {
+            // <0: open, 0: close
+            let pitch = pose_est.cur_joint_pos['right-middle-1'].pitch;
+            // tar_q[41] = -3
+            tar_q[41] = pitch > Math.PI / 2 ? 3 : -3
+            // tar_q[41] = (-pitch + Math.PI / 2)
+            console.log('pitch-0', pitch)
+          }
+          
+          if (pose_est.cur_joint_pos && "right-middle-1" in pose_est.cur_joint_pos) {
+            // <0: open, 0: open
+            let pitch = pose_est.cur_joint_pos['right-middle-1'].pitch;
+            // tar_q[42] = -1
+            tar_q[42] = pitch > Math.PI / 2 ? 3 : -3
+            console.log('pitch-1', pitch)
           }
          
           this.action_que.set_next(tar_q, 100);
@@ -276,16 +344,11 @@ export class MuJoCoDemo {
       )
       for (let i = 0; i < this.simulation.ctrl.length; i++) {
         this.simulation.ctrl[i] = tau[i];
-        // this.simulation.ctrl[i] = tmp[i];
       }
       // this.simulation.ctrl[3] = tau[3];
       this.simulation.ctrl[12] = default_p[12];
       this.simulation.ctrl[13] = default_p[13];
       this.simulation.ctrl[14] = default_p[14];
-      
-      // this.simulation.ctrl[15] = tau[15]; // left shoulder pitch
-      // this.simulation.ctrl[16] = tau[16]; // left shoulder roll
-      // this.simulation.ctrl[18] = tau[18]; // left_elbow
     }
 
     // Clear old perturbations, apply new ones.

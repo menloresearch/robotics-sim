@@ -1,4 +1,4 @@
-// Converted keypoint2ang from Python to JavaScript
+import {medaipipeIK} from './ik.js'
 
 const BODY_JOINTS = {
     leftShoulder: 11,  rightShoulder: 12,
@@ -266,7 +266,8 @@ class KeypointsToAngles {
             intermediateAngle = Math.PI / 2;
         }
 
-        let RShoulderPitch = intermediateAngle <= Math.PI / 2 ? -theta_RSP_module : theta_RSP_module;
+        let RShoulderPitch = theta_RSP_module;
+        // let RShoulderPitch = intermediateAngle <= Math.PI / 2 ? -theta_RSP_module : theta_RSP_module;
 
         x = v_2_3.dot(R_right_torso) / (v_2_3.len() * R_right_torso.len());
         let RShoulderRoll;
@@ -425,6 +426,8 @@ class KeypointsToAngles {
         )
         
         const kp_l_elbow = new Vec3(...Object.values(poseLandmarks[BODY_JOINTS['leftElbow']]));
+        const kp_r_elbow = new Vec3(...Object.values(poseLandmarks[BODY_JOINTS['rightElbow']]));
+        
         // debugger
         const {LShoulderPitch, LShoulderRoll} = this.obtainLShoulderPitchRollAngles(neck, kp_l_shoulder, kp_l_elbow, hip)
         angs['rightShoulder-leftShoulder-leftElbow'] = {pitch: LShoulderPitch, roll: LShoulderRoll}
@@ -434,10 +437,17 @@ class KeypointsToAngles {
         const LElbowPich = kp_l_wrist.sub(kp_l_elbow).rad(
             kp_l_shoulder.sub(kp_l_elbow)
         )
-        // const LElbowPich = kp_l_elbow.sub(kp_l_wrist).rad(
-        //     kp_l_elbow.sub(kp_l_shoulder)
-        // )
         angs['leftShoulder-leftElbow-leftWrist'] = {pitch: LElbowPich, yaw: LElbowYaw}
+        
+        const {RShoulderPitch, RShoulderRoll} = this.obtainRShoulderPitchRollAngles(neck, kp_r_shoulder, kp_r_elbow, hip)
+        angs['leftShoulder-rightShoulder-rightElbow'] = {pitch: RShoulderPitch, roll: RShoulderRoll}
+        
+        const kp_r_wrist = new Vec3(...Object.values(poseLandmarks[BODY_JOINTS['rightWrist']]));
+        const {RElbowYaw, RElbowRoll} = this.obtainRElbowYawRollAngle(neck, kp_r_shoulder, kp_r_elbow, kp_r_wrist)
+        const RElbowPich = kp_r_wrist.sub(kp_r_elbow).rad(
+            kp_r_shoulder.sub(kp_r_elbow)
+        )
+        angs['rightShoulder-rightElbow-rightWrist'] = {pitch: RElbowPich, yaw: RElbowYaw}
 
         
         return angs;
@@ -549,6 +559,7 @@ export class PoseEst {
             if (results.poseLandmarks) {
                 // let out = computeRelativeJointAngles(results.poseLandmarks, { unit: 'radian', visibilityThreshold: 0.5 })
                 let out = keypointsToAngles.convert(results.poseLandmarks, { unit: 'radian', visibilityThreshold: 0.5 })
+                // let out = medaipipeIK(results.poseLandmarks)
                 if (out !== undefined && !empty_obj(out)) {
                     this.cur_joint_pos = out
                     // console.debug(this.cur_joint_pos)
@@ -557,6 +568,12 @@ export class PoseEst {
                     Object.assign(
                         this.cur_joint_pos, 
                         keypointsToAngles.convert_hand(results.leftHandLandmarks, {keyPrefix: 'left-'})
+                    )
+                }
+                if (results.rightHandLandmarks !== undefined) {
+                    Object.assign(
+                        this.cur_joint_pos, 
+                        keypointsToAngles.convert_hand(results.rightHandLandmarks, {keyPrefix: 'right-'})
                     )
                 }
             }
