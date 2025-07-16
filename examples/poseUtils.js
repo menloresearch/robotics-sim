@@ -541,9 +541,9 @@ export class PoseEst {
 
             canvasCtx.globalCompositeOperation = 'source-over';
             drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS,
-                          {color: '#b0FF00', lineWidth: 4});
+                          {color: '#b0FF00', lineWidth: 2});
             drawLandmarks(canvasCtx, results.poseLandmarks,
-                          {color: '#FF0000', lineWidth: 2});
+                          {color: '#FF0000', lineWidth: 1});
             drawConnectors(canvasCtx, results.faceLandmarks, FACEMESH_TESSELATION,
                           {color: '#C0C0C070', lineWidth: 1});
             drawConnectors(canvasCtx, results.leftHandLandmarks, HAND_CONNECTIONS,
@@ -551,9 +551,9 @@ export class PoseEst {
             drawLandmarks(canvasCtx, results.leftHandLandmarks,
                           {color: '#00FF00', lineWidth: 2});
             drawConnectors(canvasCtx, results.rightHandLandmarks, HAND_CONNECTIONS,
-                          {color: '#00CC00', lineWidth: 3});
+                          {color: '#00CC00', lineWidth: 1});
             drawLandmarks(canvasCtx, results.rightHandLandmarks,
-                          {color: '#FF0000', lineWidth: 2});
+                          {color: '#FF0000', lineWidth: 1});
             canvasCtx.restore();
             
             if (results.poseLandmarks) {
