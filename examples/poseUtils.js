@@ -1,4 +1,3 @@
-import {medaipipeIK} from './ik.js'
 
 const BODY_JOINTS = {
     leftShoulder: 11,  rightShoulder: 12,
