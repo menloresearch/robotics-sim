@@ -1,14 +1,86 @@
+# Build directories
 build/
-robot/
 dist/
-.cache/
-.clangd
+CMakeFiles/
 node_modules/
 
+# Build artifacts
 CMake*.txt
 cmake*
 Makefile
-examples/scenes/meshes/*
-CMakeFiles/
 bun.lockb
 compile_commands.json
+
+# Cache and temp files
+.cache/
+.clangd
+.vscode/
+.ipynb_checkpoints/
+*__pycache__*
+*.pyc
+
+# Logs
+*.log
+*.out
+MUJOCO_LOG.TXT
+
+# Media files
+videos/*
+*img
+*.mp4
+debug.mp4
+
+# Python artifacts
+*.pt
+*.ipynb
+*.npy
+*.pkl
+
+# Archives
+*zip
+
+# Mesh data
+examples/scenes/meshes/*
+robot/
+
+# TWIST2-specific ignores
+isaacgym/
+fbx/
+cmu_fbx_all/
+phc/
+motion_data/
+ignore/
+track_dataset/
+for_joao/
+data_recorded/
+PythonClient/
+avp_teleoperate/
+unitree_IL_lerobot/
+retarget_lib/
+joao_data/
+ubisoft-laforge-animation-dataset/
+logs/
+ProtoMotions/
+motion_generation_data/
+vr_data/
+mocap_data/
+mocap_data_g1/
+unitree_description/
+zed_videos/
+TWIST2_motion_data/
+TWIST2-clean/
+unitree_sdk2/
+twist2_demonstration/
+
+# Body models - ignore completely
+body_models/
+**/body_models/
+**/body_models/*
+assets/body_models/
+assets/body_models/*
+TWIST2/assets/body_models/
+TWIST2/assets/body_models/*
+
+# GVHMR outputs
+video_2_motion/gvhmr_outputs/*
+TWIST2/video_2_motion/gvhmr_outputs/*

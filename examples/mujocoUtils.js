@@ -235,12 +235,14 @@ export function setupGUI(parentContext) {
     .listen();
   keyframeGUI.onChange((value) => {
     if (value < parentContext.model.nkey) {
-      parentContext.simulation.qpos.set(
-        parentContext.model.key_qpos.slice(
-          value * parentContext.model.nq,
-          (value + 1) * parentContext.model.nq,
-        ),
-      );
+      // Copy keyframe data to avoid Float64Array alignment issues
+      const startIdx = value * parentContext.model.nq;
+      const endIdx = (value + 1) * parentContext.model.nq;
+      const tempArray = new Float64Array(parentContext.model.nq);
+      for (let i = 0; i < parentContext.model.nq; i++) {
+        tempArray[i] = parentContext.model.key_qpos[startIdx + i];
+      }
+      parentContext.simulation.qpos.set(tempArray);
     }
   });
   parentContext.updateGUICallbacks.push((model, simulation, params) => {
@@ -263,6 +265,141 @@ export function setupGUI(parentContext) {
   simulationFolder
     .add(parentContext.params, "ctrlnoisestd", 0.0, 2.0, 0.01)
     .name("Noise scale");
+
+  // Add Webcam Recording controls
+  let recordingFolder = parentContext.gui.addFolder("Webcam Recording");
+
+  recordingFolder.add({
+    startRecording: () => {
+      if (parentContext.webcamRecorder) {
+        const success = parentContext.webcamRecorder.startRecording();
+        if (success) {
+          console.log('Webcam recording started');
+        }
+      } else {
+        console.error('Webcam recorder not initialized');
+      }
+    }
+  }, 'startRecording').name('Start Recording');
+
+  recordingFolder.add({
+    stopRecording: () => {
+      if (parentContext.webcamRecorder) {
+        const success = parentContext.webcamRecorder.stopRecording();
+        if (success) {
+          console.log('Webcam recording stopped');
+        }
+      } else {
+        console.error('Webcam recorder not initialized');
+      }
+    }
+  }, 'stopRecording').name('Stop Recording');
+
+  recordingFolder.add({
+    playRecording: () => {
+      if (parentContext.webcamRecorder) {
+        parentContext.webcamRecorder.playRecording();
+      } else {
+        console.error('Webcam recorder not initialized');
+      }
+    }
+  }, 'playRecording').name('Play Recording');
+
+  recordingFolder.add({
+    downloadRecording: () => {
+      if (parentContext.webcamRecorder) {
+        parentContext.webcamRecorder.downloadRecording();
+      } else {
+        console.error('Webcam recorder not initialized');
+      }
+    }
+  }, 'downloadRecording').name('Download Recording');
+
+  // Add video upload button
+  recordingFolder.add({
+    uploadVideo: () => {
+      // Create hidden file input
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'video/*';
+      fileInput.style.display = 'none';
+
+      fileInput.onchange = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        console.log('Selected file:', file.name);
+
+        // Show upload progress
+        const progressDiv = createProgressOverlay('Uploading and converting video...');
+
+        try {
+          // Upload and convert video
+          const formData = new FormData();
+          formData.append('video', file);
+
+          const response = await fetch('http://10.210.0.51:5000/upload_and_convert', {
+            method: 'POST',
+            body: formData
+          });
+
+          if (!response.ok) {
+            throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
+          }
+
+          const result = await response.json();
+          console.log('Upload and conversion result:', result);
+          console.log('Converted URL:', result.converted_url);
+          console.log('Converted filename:', result.converted_filename);
+
+          // Update progress
+          progressDiv.textContent = 'Video converted successfully! Loading...';
+
+          // Display the converted video
+          console.log('About to call displayConvertedVideo...');
+          displayConvertedVideo(result.converted_url, result.converted_filename);
+          console.log('displayConvertedVideo called!');
+
+          // Remove progress overlay after delay
+          setTimeout(() => {
+            if (progressDiv.parentNode) {
+              document.body.removeChild(progressDiv);
+            }
+          }, 2000);
+
+        } catch (error) {
+          console.error('Failed to upload video:', error);
+          progressDiv.style.background = 'rgba(200, 0, 0, 0.95)';
+          progressDiv.innerHTML = `
+            <div style="font-size: 48px; margin-bottom: 10px;">✗</div>
+            <div>Upload Failed!</div>
+            <div style="font-size: 18px; margin-top: 15px; font-weight: normal;">
+              ${error.message}
+            </div>
+          `;
+
+          setTimeout(() => {
+            if (progressDiv.parentNode) {
+              document.body.removeChild(progressDiv);
+            }
+          }, 4000);
+        }
+      };
+
+      document.body.appendChild(fileInput);
+      fileInput.click();
+      document.body.removeChild(fileInput);
+    }
+  }, 'uploadVideo').name('Upload Video');
+
+  // Add restore webcam button
+  recordingFolder.add({
+    restoreWebcam: () => {
+      restoreWebcamFeed();
+    }
+  }, 'restoreWebcam').name('Restore Webcam');
+
+  recordingFolder.open();
 
   let textDecoder = new TextDecoder("utf-8");
   let nullChar = textDecoder.decode(new ArrayBuffer(1));
@@ -947,4 +1084,143 @@ export function standardNormal() {
     Math.sqrt(-2.0 * Math.log(Math.random())) *
     Math.cos(2.0 * Math.PI * Math.random())
   );
+}
+
+/**
+ * Create a progress overlay for video operations
+ * @param {string} message The message to display
+ * @returns {HTMLElement} The overlay element
+ */
+function createProgressOverlay(message) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 100, 200, 0.95);
+    color: white;
+    padding: 40px 80px;
+    border-radius: 15px;
+    font-size: 24px;
+    font-weight: bold;
+    font-family: Arial, sans-serif;
+    z-index: 9999;
+    text-align: center;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+  `;
+  overlay.textContent = message;
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+/**
+ * Display the converted video in the video element
+ * @param {string} videoUrl The URL of the converted video
+ * @param {string} filename The filename for display
+ */
+function displayConvertedVideo(videoUrl, filename) {
+  console.log('=== displayConvertedVideo called ===');
+  console.log('videoUrl:', videoUrl);
+  console.log('filename:', filename);
+
+  const videoElement = document.getElementsByClassName('input_video')[0];
+  console.log('videoElement found:', !!videoElement);
+
+  if (!videoElement) {
+    console.error('Video element not found');
+    return;
+  }
+
+  // Stop any existing webcam stream
+  if (videoElement.srcObject) {
+    console.log('Stopping existing webcam stream...');
+    const tracks = videoElement.srcObject.getTracks();
+    tracks.forEach(track => track.stop());
+    videoElement.srcObject = null;
+  }
+
+  // Load the converted video
+  const fullUrl = `http://10.210.0.51:5000${videoUrl}`;
+  console.log('Setting video src to:', fullUrl);
+  videoElement.src = fullUrl;
+  videoElement.controls = true;
+  videoElement.loop = true;
+  videoElement.autoplay = true;
+
+  console.log(`Displaying converted video: ${filename}`);
+  console.log(`Video URL: ${fullUrl}`);
+  console.log('Video element src set successfully');
+
+  // Show success message
+  const message = document.createElement('div');
+  message.style.cssText = `
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 200, 0, 0.95);
+    color: white;
+    padding: 40px 80px;
+    border-radius: 15px;
+    font-size: 36px;
+    font-weight: bold;
+    font-family: Arial, sans-serif;
+    z-index: 9999;
+    text-align: center;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+  `;
+
+  message.innerHTML = `
+    <div style="font-size: 48px; margin-bottom: 10px;">✓</div>
+    <div>Video Ready!</div>
+    <div style="font-size: 18px; margin-top: 15px; font-weight: normal;">
+      ${filename}<br>
+      Playing in video feed
+    </div>
+  `;
+
+  document.body.appendChild(message);
+
+  setTimeout(() => {
+    if (message.parentNode) {
+      document.body.removeChild(message);
+    }
+  }, 3000);
+}
+
+/**
+ * Restore webcam feed
+ */
+async function restoreWebcamFeed() {
+  const videoElement = document.getElementsByClassName('input_video')[0];
+
+  if (!videoElement) {
+    console.error('Video element not found');
+    return;
+  }
+
+  // Clear video source
+  videoElement.src = '';
+  videoElement.controls = false;
+  videoElement.autoplay = false;
+  videoElement.loop = false;
+
+  // Restart webcam
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        facingMode: 'user'
+      },
+      audio: false
+    });
+
+    videoElement.srcObject = stream;
+    videoElement.play();
+    console.log('Webcam feed restored');
+  } catch (error) {
+    console.error('Failed to restore webcam:', error);
+  }
 }

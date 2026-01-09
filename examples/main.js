@@ -11,26 +11,16 @@ import {
   toMujocoPos,
   standardNormal,
 } from "./mujocoUtils.js";
-import {
-  computeJointEulers,
-  PoseEst,
-} from "./poseUtils.js"
-import {
-  pd_control, 
-  ActionQuee, 
-  G1_CFG,
-  g1_next_action
-} from "./robot.js"
+import { VisualizationController } from "./visualizationController.js";
 import load_mujoco from "../dist/mujoco-wasm.js";
 
 
 // Load the MuJoCo Module
 const mujoco = await load_mujoco();
-const pose_est = new PoseEst();
 
 // Set up Emscripten's Virtual File System
-var initialScene = "arm26.xml";
-// var initialScene = "g1_29dof_with_hand_rev_1_0.xml";
+// var initialScene = "arm26.xml";
+var initialScene = "g1_29dof_with_hand_rev_1_0.xml";
 
 mujoco.FS.mkdir("/working");
 mujoco.FS.mount(mujoco.MEMFS, { root: "." }, "/working");
@@ -116,7 +106,12 @@ export class MuJoCoDemo {
       this.controls,
     );
 
-    this._debug_step = 0
+    this._debug_step = 0;
+
+    // TWIST2 Visualization Controller
+    this.twist2Controller = null;
+    this.twist2Ready = false;
+    this.visualizationMode = true;
   }
 
   async init() {
@@ -127,8 +122,59 @@ export class MuJoCoDemo {
     [this.model, this.state, this.simulation, this.bodies, this.lights] =
       await loadSceneFromURL(mujoco, initialScene, this);
 
+    // Initialize TWIST2 controller if G1 model is loaded
+    console.log('[DEBUG] Current scene:', this.params.scene);
+    if (this.params.scene === 'g1_29dof_with_hand_rev_1_0.xml') {
+      console.log('[DEBUG] Initializing TWIST2 for G1...');
+      await this.initTWIST2();
+    } else {
+      console.log('[DEBUG] Skipping TWIST2 - not G1 scene');
+    }
+
     this.gui = new GUI();
     setupGUI(this);
+  }
+
+  async initTWIST2() {
+    // Change this IP to where your WebSocket bridge is running
+    // If on host machine: use host IP
+    // If on same VM: use localhost
+    const WS_URL = "ws://10.210.0.51:8765"; // Update this IP!
+
+    console.log('[TWIST2] Visualization mode: Browser mirrors Python simulation');
+    console.log('[TWIST2] Make sure to run: python server_low_level_g1_sim.py');
+
+    this.twist2Controller = new VisualizationController(this.simulation, WS_URL);
+    this.visualizationMode = true;
+    this.twist2Ready = await this.twist2Controller.initialize();
+
+    if (this.twist2Ready) {
+      console.log('[TWIST2] Controller ready!');
+      this.updateTWIST2Status('policy', 'Ready', 'lime');
+    } else {
+      console.error('[TWIST2] Failed to initialize controller');
+      this.updateTWIST2Status('policy', 'Failed', 'red');
+    }
+  }
+
+  updateTWIST2Status(type, text, color = 'white') {
+    const statusMap = {
+      'ws': 'twist2-ws-status',
+      'policy': 'twist2-policy-status',
+      'redis': 'twist2-redis-status'
+    };
+
+    const elementId = statusMap[type];
+    if (elementId) {
+      const element = document.getElementById(elementId);
+      if (element) {
+        const span = element.querySelector('span');
+        if (span) {
+          span.textContent = text;
+          span.style.color = color;
+        }
+      }
+    }
   }
 
   onWindowResize() {
@@ -137,55 +183,38 @@ export class MuJoCoDemo {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   }
 
-  control_step() {
+  async control_step() {
     let timestep = this.model.getOptions().timestep;
-    
-    if (this.params.scene === 'g1_29dof_with_hand_rev_1_0.xml' && (this._debug_step > 100)) {
-          
-      let tar_q = new Float64Array(G1_CFG.dof).fill(0);
-      let zero = new Float64Array(G1_CFG.dof).fill(0);
 
-      const default_p = pd_control(
-        zero,
-        this.simulation.qpos,
-        G1_CFG.kp,
-        G1_CFG.target_dq,
-        this.simulation.qvel,
-        G1_CFG.kd,
-      )
+    // Visualization mode for G1: Just mirror Python simulation
+    if (this.params.scene === 'g1_29dof_with_hand_rev_1_0.xml' && this.twist2Controller && this.twist2Ready) {
+      // Update pose from Python simulation (no physics)
+      this.twist2Controller.step();
 
-      if (this.action_que === undefined) {
-        this.action_que = new ActionQuee(new Float64Array(this.simulation.qpos))
-        this.action_que.set_next(tar_q, 100);
-      } else {
-        if (this.action_que.queue.length === 0) {
-          tar_q = g1_next_action(pose_est.cur_joint_pos)
-          this.action_que.set_next(tar_q, 100);
+      // Update status panel
+      if (this.twist2Controller.ws && this.twist2Controller.ws.readyState === WebSocket.OPEN) {
+        this.updateTWIST2Status('ws', 'Connected', 'lime');
+        if (this.twist2Controller.simQpos) {
+          this.updateTWIST2Status('policy', 'Mirroring Python', 'lime');
+          this.updateTWIST2Status('redis', 'Receiving State', 'lime');
+        } else {
+          this.updateTWIST2Status('redis', 'Waiting for Python...', 'yellow');
         }
+      } else {
+        this.updateTWIST2Status('ws', 'Connecting...', 'yellow');
       }
-      
-      const tau = pd_control(
-        this.action_que.next_action(),
-        this.simulation.qpos,
-        G1_CFG.kp,
-        G1_CFG.target_dq,
-        this.simulation.qvel,
-        G1_CFG.kd,
-      )
-      for (let i = 0; i < this.simulation.ctrl.length; i++) {
-        this.simulation.ctrl[i] = tau[i];
-      }
-      // this.simulation.ctrl[3] = tau[3];
-      this.simulation.ctrl[12] = default_p[12];
-      this.simulation.ctrl[13] = default_p[13];
-      this.simulation.ctrl[14] = default_p[14];
+
+      // Update visualization without physics
+      this.simulation.forward();
+      this.mujoco_time += timestep * 1000.0;
+      return;
     }
 
     // Clear old perturbations, apply new ones.
     for (let i = 0; i < this.simulation.qfrc_applied.length; i++) {
       this.simulation.qfrc_applied[i] = 0.0;
     }
-    
+
     let dragged = this.dragStateManager.physicsObject;
     if (dragged && dragged.bodyID) {
       for (let b = 0; b < this.model.nbody; b++) {
@@ -229,16 +258,16 @@ export class MuJoCoDemo {
     this.mujoco_time += timestep * 1000.0;
   }
 
-  render(timeMS) {
+  async render(timeMS) {
     this.controls.update();
     this._debug_step++
-    
+
     if (!this.params["paused"]) {
       if (timeMS - this.mujoco_time > 35.0) {
         this.mujoco_time = timeMS;
       }
       while (this.mujoco_time < timeMS) {
-        this.control_step()
+        await this.control_step()
       }
     } else if (this.params["paused"]) {
       this.dragStateManager.update(); // Update the world-space force origin

@@ -14,6 +14,12 @@
         <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
         <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
         <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+
+        <!-- Load ONNX Runtime Web for TWIST2 -->
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.16.3/dist/ort.min.js"></script>
+
+        <!-- Load Pyodide to run Python in browser -->
+        <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
     </head>
 
     <body style="margin:0px; background-color:rgb(255, 255, 255); overflow:hidden; position:fixed; min-height: 100%;
@@ -39,9 +45,74 @@
             <script type="module" src="./examples/Debug.js"></script>-->
             <script type="module" src="./examples/main.js"></script>
         </div>
-        <div style="position: fixed; width: 480px;">
-            <video class="input_video" ></video>
-            <canvas class="output_canvas"></canvas>
+
+        <!-- TWIST2 Status Panel -->
+        <div id="twist2-status" style="position: fixed; top: 20px; right: 20px; color: white; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px; font-family: monospace; z-index: 1000; min-width: 250px; border: 2px solid #333;">
+            <h3 style="margin: 0 0 10px 0; color: #4488ff;">TWIST2 Controller</h3>
+            <div id="twist2-policy-status">Policy: <span style="color: yellow;">Loading...</span></div>
+            <div id="twist2-ws-status">WebSocket: <span style="color: yellow;">Connecting...</span></div>
+            <div id="twist2-redis-status">Motion Data: <span style="color: gray;">Waiting...</span></div>
+        </div>
+
+        <!-- Video Upload Panel -->
+        <div id="upload-panel" style="position: fixed; bottom: 20px; right: 20px; color: white; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 8px; font-family: monospace; z-index: 1000; min-width: 300px; border: 2px solid #333;">
+            <h3 style="margin: 0 0 10px 0; color: #44ff88;">Upload Video</h3>
+            <input type="file" id="video-input" accept="video/*" style="margin-bottom: 10px; width: 100%; padding: 5px; background: #333; color: white; border: 1px solid #555; border-radius: 4px;">
+            <button id="upload-btn" style="width: 100%; padding: 8px; background: #4488ff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-bottom: 5px;">Upload Video</button>
+            <button id="process-btn" style="width: 100%; padding: 8px; background: #44ff88; color: black; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" title="Click for info about auto-processing">Auto-Processing Info</button>
+            <div id="upload-status" style="margin-top: 10px; font-size: 12px; color: #aaa;"></div>
+        </div>
+
+        <script>
+            // Video upload handling
+            const videoInput = document.getElementById('video-input');
+            const uploadBtn = document.getElementById('upload-btn');
+            const processBtn = document.getElementById('process-btn');
+            const uploadStatus = document.getElementById('upload-status');
+
+            uploadBtn.addEventListener('click', async () => {
+                const file = videoInput.files[0];
+                if (!file) {
+                    uploadStatus.textContent = '⚠ Please select a video file';
+                    uploadStatus.style.color = 'orange';
+                    return;
+                }
+
+                uploadStatus.textContent = '⏳ Uploading...';
+                uploadStatus.style.color = 'yellow';
+
+                const formData = new FormData();
+                formData.append('video', file);
+
+                try {
+                    const response = await fetch('/upload_video', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        uploadStatus.textContent = '✓ Uploaded! Auto-processing will start in ~2 seconds...';
+                        uploadStatus.style.color = 'lime';
+                    } else {
+                        uploadStatus.textContent = '✗ Upload failed: ' + (result.error || result.message);
+                        uploadStatus.style.color = 'red';
+                    }
+                } catch (error) {
+                    uploadStatus.textContent = '✗ Error: ' + error.message;
+                    uploadStatus.style.color = 'red';
+                }
+            });
+
+            processBtn.addEventListener('click', () => {
+                uploadStatus.textContent = 'ℹ️ Auto-processing is enabled. Just upload videos!';
+                uploadStatus.style.color = 'cyan';
+            });
+        </script>
+
+        <div style="position: fixed; top: 20px; left: 20px; width: 480px; z-index: 1000; border: 2px solid #333; border-radius: 8px; overflow: hidden; background: black; display: none;">
+            <video class="input_video" style="width: 100%; display: block;"></video>
         </div>
     </body>
 </html>
